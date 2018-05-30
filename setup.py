@@ -7,7 +7,7 @@ import enrich_pvalues  # For version
 VERSION=enrich_pvalues.__version__
 GITHUB='https://github.com/MikeDacre/enrich_pvalues'
 
-REQUIREMENTS = []
+REQUIREMENTS = ['tabulate', 'tqdm', 'numpy', 'pandas', 'matplotlib', 'seaborn']
 
 
 def read(fname):
@@ -74,6 +74,5 @@ setup(
 
     # Requirements
     requires=REQUIREMENTS,
-    install_requires=REQUIREMENTS,
-    #  tests_require=[],
+    install_requires=REQUIREMENTS
 )

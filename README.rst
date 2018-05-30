@@ -6,10 +6,11 @@ A simple script to compare p-values between a test and comparison dataset at a
 variety of p-value cutoffs. By plotting the enrichment score at a variety of
 cutoffs, it is possible to pick the optimal cutoff for your data.
 
+Version: 1.0-beta1
+
 .. image:: enrich_score.gif
 
 .. contents:: **Contents**
-
 
 Algorithm
 =========
