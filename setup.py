@@ -7,7 +7,10 @@ import enrich_pvalues  # For version
 VERSION=enrich_pvalues.__version__
 GITHUB='https://github.com/MikeDacre/enrich_pvalues'
 
-REQUIREMENTS = ['tabulate', 'tqdm', 'numpy', 'pandas', 'matplotlib', 'seaborn']
+with open('requirements.txt') as fin:
+    REQUIREMENTS = [
+        i[0] for i in [j.split('>=') for j in fin.read().strip().split('\n')]
+    ]
 
 
 def read(fname):
@@ -35,29 +38,17 @@ setup(
     url = GITHUB,
     download_url='{0}/archive/v{1}.tar.gz'.format(GITHUB, VERSION),
 
-    # Actual packages/modules
-    # Packages are directories with __init__.py files
-    # Modules are python scripts (minus the .py)
-    #  packages=['enrich_pvalues'],
     py_modules=['enrich_pvalues'],
 
-    # Entry points and scripts
-    # Entry points are functions that can use sys.argv (e.g. main())
-    # Scripts are independent pieces of code intended to be executed as is
     entry_points = {
         'console_scripts': [
             'enrich_pvalues = enrich_pvalues:main',
         ],
     },
-    #  scripts = [],
-
-    # Data files
-    #  data_files = [],
 
     # See https://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[
-        'Development Status :: 1 - Planning',
-        # 'Development Status :: 4 - Beta',
+        'Development Status :: 4 - Beta',
         # 'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
         'Intended Audience :: End Users/Desktop',
