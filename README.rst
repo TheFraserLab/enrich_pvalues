@@ -75,17 +75,37 @@ Now, run the enrichment using those two tables and your test data:
 
 .. code:: shell
 
-   enrich_pvalues run -c enrich_atac.json -o atac_scores.xls -p atac /path/to/test_data.txt
+   enrich_pvalues run -c enrich_atac.json -o atac_scores.xlsx -p atac /path/to/test_data.txt
 
 Note, the second to last argument is the prefix from the second step.
-
-Finally, plot the data. This can also be done by passing e.g. ``--plot myplot.png``
-to the run step.
-
-.. code:: shell
-
-   enrich_pvalues plot --prefix caQTL atac_scores.xls atac_plot.pdf
 
 Note: the scores can be excel format, pickled format, or text format, depending
 on the suffix. Also, the prefix in this plot step is different, it is used to
 title the plot only, and so can be whatever you want.
+
+Finally, plot the data. This can also be done by passing e.g. ``--plot myplot.png``
+to the run step, although that has fewer options.
+
+.. code:: shell
+
+   enrich_pvalues plot --prefix caQTL atac_scores.xlsx atac_plot.pdf
+
+The resulting plot will look something like this:
+
+.. image::
+    https://github.com/TheFraserLab/enrich_pvalues/raw/master/plot_example.png
+
+To control the name of the comparison dataset, pass ``-p <name>``, this is only
+used for title formatting and so does not need to be the same as the prefix used
+in earlier steps.
+
+To format the counts as raw numbers instead of a percentage, pass ``--raw``.
+
+Finally, it can be useful to limit the range of cutoffs to zoom the plot into a
+region of interest. To do that, pass ``--min-p`` and ``--max-p``. e.g.:
+
+.. code:: shell
+
+    enrich_pvalues plot --min-p 5e-3 --max-p 1e-7 --raw --prefix caQTL atac_scores.xlsx plot_example.png
+
+That command is the one used to create the above example plot.

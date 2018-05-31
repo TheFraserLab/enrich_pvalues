@@ -193,11 +193,16 @@ def plot_scores(scores, outfile=None, figsize=(14,10),
     # Plot counts
     if raw:
         scores.plot.line(y='sig_data', color='orange', ax=ax1, legend=False)
+        mx = scores.sig_data.max()
         ax1.set_ylabel(
             'Number Kept\n(Max {0:,}, Min {1:,})'.format(
-                scores.sig_data.max(), scores.sig_data.min()
+                mx, scores.sig_data.min()
             ), fontsize=14
         )
+        lp = 10**(len(str(mx))-1)
+        ymx = math.ceil(mx/lp)*lp
+        yticks = range(0, ymx+1, int(round(ymx/15)))
+        ax1.set_yticks(yticks)
     else:
         scores['perc'] = scores.sig_data/scores.sig_data.max()
         scores.plot.line(y='perc', color='orange', ax=ax1, legend=False)
@@ -237,7 +242,7 @@ def plot_scores(scores, outfile=None, figsize=(14,10),
     if outfile:
         fig.savefig(outfile)
 
-    #  return fig, [ax1, ax2]
+    return fig, [ax1, ax2]
 
 
 def get_set(x):
@@ -604,8 +609,10 @@ def plot_args(args):
     else:
         with open_zipped(args.scores) as fin:
             scores = pd.read_csv(fin, sep=conf['test_sep'])
-    scores['idx'] = scores.cutoff.astype(float)
-    scores.set_index('idx', drop=True, inplace=True)
+    if args.min_p:
+        scores = scores[scores.cutoff <= args.min_p]
+    if args.max_p:
+        scores = scores[scores.cutoff >= args.max_p]
     _sys.stderr.write('Plotting scores to {0}\n'.format(args.plot))
     plot_scores(
         scores, outfile=args.plot, comp_prefix=args.prefix, raw=args.raw
@@ -726,14 +733,30 @@ def main(argv=None):
     split_mode.set_defaults(func=split_args)
 
     plot_mode = subparsers.add_parser(
-        'plot', parents=[conf_parser, prefix_args],
+        'plot', parents=[conf_parser],
         description='Plot results', help='Plot results'
     )
     plot_mode.add_argument('scores', help='Scores table from run mode')
-    plot_mode.add_argument('plot', help='File to write plot to')
     plot_mode.add_argument(
+        'plot-output', dest='plot', help='File to write plot to'
+    )
+    plot_fmt = plot_mode.add_argument_group('format options')
+    plot_fmt.add_argument(
         '--raw', action='store_true',
         help="Plot raw counts instead of percentages"
+    )
+    plot_fmt.add_argument(
+        '-p', '--prefix', default='comp_data',
+        help='Optional comparison study prefix, only used for plot title'
+    )
+    plot_filt = plot_mode.add_argument_group('filter options')
+    plot_filt.add_argument(
+        '--min-p', metavar='P-VAL', type=float,
+        help="Limit points to those with a cutoff less than this P"
+    )
+    plot_filt.add_argument(
+        '--max-p', metavar='P-VAL', type=float,
+        help="Limit point to those with a cutoff greater than this P"
     )
     plot_mode.set_defaults(func=plot_args)
 
