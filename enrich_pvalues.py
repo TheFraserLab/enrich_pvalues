@@ -20,7 +20,7 @@ from tabulate import tabulate as _tab
 from tqdm import tqdm as _tqdm
 
 
-__version__ = '1.0b1'
+__version__ = '1.0b2'
 
 
 ###############################################################################
@@ -151,7 +151,8 @@ def enrich_study(dataset, sig_comp, nsig_comp, simp_fl=False,
     return scores
 
 
-def plot_scores(scores, outfile=None, figsize=(14,10), comp_prefix=None):
+def plot_scores(scores, outfile=None, figsize=(14,10),
+                comp_prefix=None, raw=False):
     """Plot enrichment score and sig count against cutoff.
 
     Enrichment scores end up on left y axis, total number of significant right
@@ -167,6 +168,8 @@ def plot_scores(scores, outfile=None, figsize=(14,10), comp_prefix=None):
         Size of figure
     comp_prefix : str, optional
         The prefix of the comparison data to use for title creation
+    raw : bool, optional
+        Plot raw counts instead of percentages
 
     Returns
     -------
@@ -181,42 +184,60 @@ def plot_scores(scores, outfile=None, figsize=(14,10), comp_prefix=None):
     else:
         title = 'Enrichment Scores at Various P-Value Cutoffs'
 
-    scores['perc'] = scores.sig_data/scores.sig_data.max()
+    scores.reset_index(inplace=True)
     sns.set_style('dark')
     sns.set_palette('deep')
 
     fig, ax1 = plt.subplots(figsize=figsize)
 
+    # Plot counts
+    if raw:
+        scores.plot.line(y='sig_data', color='orange', ax=ax1, legend=False)
+        ax1.set_ylabel(
+            'Number Kept\n(Max {0:,}, Min {1:,})'.format(
+                scores.sig_data.max(), scores.sig_data.min()
+            ), fontsize=14
+        )
+    else:
+        scores['perc'] = scores.sig_data/scores.sig_data.max()
+        scores.plot.line(y='perc', color='orange', ax=ax1, legend=False)
+        ax1.set_ylabel(
+            'Percentage Kept vs P={0}'.format(scores.cutoff.max()),
+            fontsize=14
+        )
+        ax1.yaxis.set_major_formatter(
+            FuncFormatter(lambda y, _: '{0:.0%}'.format(y))
+        )
+
+    # Format and label x-axis
     ax1.set_xlabel('p-value cutoff', fontsize=14)
-    ax1.plot(scores.perc, color='orange')
-    ax1.set_ylabel(
-        'Percentage Kept vs P={0}'.format(scores.cutoff.max()),
-        fontsize=14
-    )
-    ax1.yaxis.set_major_formatter(
-        FuncFormatter(lambda y, _: '{0:.0%}'.format(y))
-    )
+    ax1.set_xticks(range(0, len(scores)+1, 1))
     ax1.set_xticklabels(
-        scores.cutoff.apply('{0}'.format).tolist(), rotation=45
+        scores.cutoff.apply(
+            lambda x: '{0}'.format(float('{0:1e}'.format(x)))
+        ), rotation=45
     )
 
+    # Plot enrichment score on opposite x-axis
     ax2 = ax1.twinx()
-    ax2.plot(scores.enrichment_score, color='blue')
+    scores.plot.line(y='enrichment_score', color='blue', ax=ax2, legend=False)
     ax2.set_ylabel(
-        'Enrichment Score (sig:non-sig enrichment)',
+        'Enrichment Score\n(sig:non-sig enrichment)',
         fontsize=14
-    )
-    ax2.set_xticklabels(
-        scores.cutoff.apply('{0}'.format).tolist(), rotation=45
     )
     ax2.set_title(title, fontsize=17)
 
+    # Format and add legend
     fig.tight_layout()
-    fig.legend(labels=('Percentage Kept', 'Enrich Score'), loc='lower right')
+    fig.legend(
+        labels=('Percentage Kept', 'Enrichment Score'),
+        loc='lower right'
+    )
 
     if outfile:
         fig.savefig(outfile)
-    return fig, [ax1, ax2]
+
+    #  return fig, [ax1, ax2]
 
 
 def get_set(x):
@@ -532,9 +553,13 @@ to update the defaults before writing the output conf file.
 def core_args(args):
     """Run the enrichment."""
     conf = parse_config_file(args.config_file)
+    if args.max_p:
+        conf['max_pval'] = args.max_p
+    if args.min_p:
+        conf['min_pval'] = args.min_p
 
-    sig_comp  = args.comp_prefix + '.sig.txt.gz'
-    nsig_comp = args.comp_prefix + '.nonsig.txt.gz'
+    sig_comp  = args.prefix + '.sig.txt.gz'
+    nsig_comp = args.prefix + '.nonsig.txt.gz'
 
     bad = []
     for fl in [sig_comp, nsig_comp]:
@@ -554,7 +579,9 @@ def core_args(args):
     if args.output:
         _sys.stderr.write('Writing score table to {0}\n'.format(args.output))
         if args.output.endswith('xls') or args.output.endswith('xlsx'):
-            scores.to_excel(args.output, sheet_name='Enrichment Scores')
+            scores.to_excel(
+                args.output, index=False, sheet_name='Enrichment Scores'
+            )
         elif args.output.endswith('pd') or args.output.endswith('pickle'):
             scores.to_pickle(args.output)
         else:
@@ -563,16 +590,26 @@ def core_args(args):
 
     if args.plot:
         _sys.stderr.write('Plotting scores to {0}\n'.format(args.plot))
-        plot_scores(scores, outfile=args.plot, comp_prefix=args.comp_prefix)
+        plot_scores(scores, outfile=args.plot, comp_prefix=args.prefix)
 
 
 def plot_args(args):
     """Run plotting only."""
+    conf = parse_config_file(args.config_file)
     _sys.stderr.write('Getting scores\n')
-    with open_zipped(args.scores) as fin:
-        scores = pd.read_csv(fin, sep='\t')
+    if args.scores.endswith('xls') or args.scores.endswith('xlsx'):
+        scores = pd.read_excel(args.scores, sheet_name='Enrichment Scores')
+    elif args.scores.endswith('pd') or args.scores.endswith('pickle'):
+        scores = pd.read_pickle(args.scores)
+    else:
+        with open_zipped(args.scores) as fin:
+            scores = pd.read_csv(fin, sep=conf['test_sep'])
+    scores['idx'] = scores.cutoff.astype(float)
+    scores.set_index('idx', drop=True, inplace=True)
     _sys.stderr.write('Plotting scores to {0}\n'.format(args.plot))
-    plot_scores(scores, outfile=args.plot, comp_prefix=args.prefix)
+    plot_scores(
+        scores, outfile=args.plot, comp_prefix=args.prefix, raw=args.raw
+    )
 
 
 def split_args(args):
@@ -627,13 +664,18 @@ def main(argv=None):
         help='Treat input file as tab-sep two column file with no header. ' +
         'First column is name, second is p-value.'
     )
+    prefix_args = _argparse.ArgumentParser(add_help=False)
+    prefix_args.add_argument(
+        '-p', '--prefix', default='comp_data',
+        help='Optional comparison study prefix'
+    )
 
     # Subparsers
     subparsers = parser.add_subparsers(dest='mode')
 
     main_mode = subparsers.add_parser(
         'run', description=MAIN_DESC, help='Run the enrichment',
-        parents=[conf_parser, file_args],
+        parents=[conf_parser, file_args, prefix_args],
         formatter_class=_argparse.RawDescriptionHelpFormatter
     )
     files = main_mode.add_argument_group('Optional Output Files')
@@ -646,23 +688,29 @@ def main(argv=None):
     )
     files2 = main_mode.add_argument_group('Required Inputs')
     files2.add_argument(
-        'comp_prefix', help='Prefix for files created by split'
-    )
-    files2.add_argument(
         'data', help='Described by config file (dump-config)'
+    )
+    mconf_override = main_mode.add_argument_group(
+        'Config Overrides (Optional, set in config file)'
+    )
+    mconf_override.add_argument(
+        '--max-p', help='Max p-value to consider',
+        metavar='maxP', type=float
+    )
+    mconf_override.add_argument(
+        '--min-p', help='Min p-value to consider',
+        metavar='maxP', type=float
     )
     main_mode.set_defaults(func=core_args)
 
     split_mode = subparsers.add_parser(
-        'split', description=SPLIT_DESC, parents=[conf_parser, file_args],
+        'split', description=SPLIT_DESC,
+        parents=[conf_parser, file_args, prefix_args],
         help='Split an existing dataset into two files for enrichment',
         formatter_class=_argparse.RawDescriptionHelpFormatter
     )
     split_mode.add_argument(
         'data_file', help='The dataset to parse, must have name and p-value'
-    )
-    split_mode.add_argument(
-        '--prefix', help='An optional prefix to use in output files'
     )
     conf_override = split_mode.add_argument_group(
         'Config Overrides (Optional, in config file)'
@@ -678,13 +726,14 @@ def main(argv=None):
     split_mode.set_defaults(func=split_args)
 
     plot_mode = subparsers.add_parser(
-        'plot', description='Plot results', help='Plot results'
+        'plot', parents=[conf_parser, prefix_args],
+        description='Plot results', help='Plot results'
     )
     plot_mode.add_argument('scores', help='Scores table from run mode')
     plot_mode.add_argument('plot', help='File to write plot to')
     plot_mode.add_argument(
-        '-p', '--prefix',
-        help='Prefix used for comp data, for title formatting'
+        '--raw', action='store_true',
+        help="Plot raw counts instead of percentages"
     )
     plot_mode.set_defaults(func=plot_args)
 
