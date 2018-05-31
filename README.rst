@@ -55,6 +55,20 @@ and tqdm.
 Usage
 =====
 
+After install, run ``enrich_pvalues --help`` to get a full description of all
+options. There are four main modes:
+
+- ``dump-config``
+- ``split``
+- ``run``
+- ``plot``
+
+Each has it's own help, so run e.g. ``enrich_pvalues split -h`` to learn how to
+split a comparison dataset.
+
+Example Steps
+-------------
+
 First, dump a configuration file to describe your data:
 
 .. code:: shell

@@ -2,6 +2,18 @@
 # -*- coding: utf-8 -*-
 """
 Compare one dataset to another at a variety of p-value cutoffs.
+
+Author: Michael D Dacre (Fraser Lab, Stanford University)
+License: MIT
+Version: 1.0b2
+Created: 2018-05-30
+Updated: 2018-05-31
+
+See the README at:
+    https://github.com/TheFraserLab/enrich_pvalues/blob/master/README.rst
+
+This software is split into four modes to allow easy p-value cutoff enrichment
+plotting for any two datasets that share names (e.g. SNPs) and have p-values.
 """
 from __future__ import print_function
 import os as _os
@@ -512,6 +524,42 @@ def open_zipped(infile, mode='r'):
 #                          Command Line Parsing                           #
 ###########################################################################
 
+EPILOG = """
+dump-config
+-----------
+
+The two datasets are described in an optional json config (controlled by the
+DEFAULT_CONFIG constant in this script). To edit these settings, run
+dump-config to get a json file to edit
+
+split
+-----
+
+This mode takes a comparison dataset (described by the config file) and splits
+it into two simple sets—a significant set, and a non-significant set. The
+p-values that describe this division are set in the config.
+
+The files from this step are required for the main algorithm, althugh they
+don't have to be made with this algorithm, you can make them yourself.
+
+run
+---
+
+Run the main algorithm—for each p-value cutoff (controlled by config), get
+percentage of names in significant set from split mode (sig_overlap), and another
+percentage of names in non-significant set (nsig_overlap) and caluclate an
+enrichment score from the ratio of the two (sig_overlap:nsig_overlap).
+
+Returns a pandas table with counts and enrichment scores for each cutoff.
+Writes this as either a text file, a pandas file, or an excel file
+
+plot
+----
+
+Create a plot from the table generated in run mode. The plot has the cutoffs
+on the x-axis, the total number of names kept in the cutoff on the left y-axis,
+and the enrichment score on the right y-axis.
+"""
 
 # Mode descriptions
 MAIN_DESC = """\
@@ -615,7 +663,7 @@ def plot_args(args):
         scores = scores[scores.cutoff >= args.max_p]
     _sys.stderr.write('Plotting scores to {0}\n'.format(args.plot))
     plot_scores(
-        scores, outfile=args.plot, comp_prefix=args.prefix, raw=args.raw
+        scores, outfile=args.plot_output, comp_prefix=args.prefix, raw=args.raw
     )
 
 
@@ -654,7 +702,7 @@ def main(argv=None):
         argv = _sys.argv[1:]
 
     parser  = _argparse.ArgumentParser(
-        description=__doc__,
+        description=__doc__, epilog=EPILOG,
         formatter_class=_argparse.RawDescriptionHelpFormatter
     )
 
@@ -679,6 +727,36 @@ def main(argv=None):
 
     # Subparsers
     subparsers = parser.add_subparsers(dest='mode')
+
+    conf_mode = subparsers.add_parser(
+        'dump-config', description=CONF_DESC, epilog=conf_help(None),
+        help='Dump a json config file', parents=[conf_parser],
+        formatter_class=_argparse.RawDescriptionHelpFormatter
+    )
+    conf_mode.add_argument('outfile', help='File to write json config to')
+    conf_mode.set_defaults(func=conf_args)
+
+    split_mode = subparsers.add_parser(
+        'split', description=SPLIT_DESC,
+        parents=[conf_parser, file_args, prefix_args],
+        help='Split an existing dataset for enrichment',
+        formatter_class=_argparse.RawDescriptionHelpFormatter
+    )
+    split_mode.add_argument(
+        'data_file', help='The dataset to parse, must have name and p-value'
+    )
+    conf_override = split_mode.add_argument_group(
+        'Config Overrides (Optional, in config file)'
+    )
+    conf_override.add_argument(
+        '--sig-p', help='P-Value to choose significant records',
+        metavar='sigP', type=float
+    )
+    conf_override.add_argument(
+        '--non-sig-p', help='P-Value to chose non-significant records',
+        metavar='unsigP', type=float
+    )
+    split_mode.set_defaults(func=split_args)
 
     main_mode = subparsers.add_parser(
         'run', description=MAIN_DESC, help='Run the enrichment',
@@ -710,35 +788,13 @@ def main(argv=None):
     )
     main_mode.set_defaults(func=core_args)
 
-    split_mode = subparsers.add_parser(
-        'split', description=SPLIT_DESC,
-        parents=[conf_parser, file_args, prefix_args],
-        help='Split an existing dataset into two files for enrichment',
-        formatter_class=_argparse.RawDescriptionHelpFormatter
-    )
-    split_mode.add_argument(
-        'data_file', help='The dataset to parse, must have name and p-value'
-    )
-    conf_override = split_mode.add_argument_group(
-        'Config Overrides (Optional, in config file)'
-    )
-    conf_override.add_argument(
-        '--sig-p', help='P-Value to choose significant records',
-        metavar='sigP', type=float
-    )
-    conf_override.add_argument(
-        '--non-sig-p', help='P-Value to chose non-significant records',
-        metavar='unsigP', type=float
-    )
-    split_mode.set_defaults(func=split_args)
-
     plot_mode = subparsers.add_parser(
         'plot', parents=[conf_parser],
         description='Plot results', help='Plot results'
     )
     plot_mode.add_argument('scores', help='Scores table from run mode')
     plot_mode.add_argument(
-        'plot-output', dest='plot', help='File to write plot to'
+        'plot-output', help='File to write plot to'
     )
     plot_fmt = plot_mode.add_argument_group('format options')
     plot_fmt.add_argument(
@@ -759,14 +815,6 @@ def main(argv=None):
         help="Limit point to those with a cutoff greater than this P"
     )
     plot_mode.set_defaults(func=plot_args)
-
-    conf_mode = subparsers.add_parser(
-        'dump-config', description=CONF_DESC, epilog=conf_help(None),
-        help='Dump a json config file', parents=[conf_parser],
-        formatter_class=_argparse.RawDescriptionHelpFormatter
-    )
-    conf_mode.add_argument('outfile', help='File to write json config to')
-    conf_mode.set_defaults(func=conf_args)
 
 
     args = parser.parse_args(argv)
