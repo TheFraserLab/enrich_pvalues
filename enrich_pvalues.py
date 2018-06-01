@@ -34,6 +34,8 @@ from tqdm import tqdm as _tqdm
 
 __version__ = '1.0b2'
 
+# How many ticks to have on the two y-axes
+YTICK_COUNT = 15
 
 ###############################################################################
 #                          Core Enrichment Algorithm                          #
@@ -163,8 +165,8 @@ def enrich_study(dataset, sig_comp, nsig_comp, simp_fl=False,
     return scores
 
 
-def plot_scores(scores, outfile=None, figsize=(14,10),
-                comp_prefix=None, raw=False):
+def plot_scores(scores, outfile=None, figsize=(14,10), comp_prefix=None,
+                raw=False, show_one=False, lock_grid=False):
     """Plot enrichment score and sig count against cutoff.
 
     Enrichment scores end up on left y axis, total number of significant right
@@ -197,13 +199,15 @@ def plot_scores(scores, outfile=None, figsize=(14,10),
         title = 'Enrichment Scores at Various P-Value Cutoffs'
 
     scores.reset_index(inplace=True)
-    sns.set_style('dark')
+    sns.set_style('darkgrid')
     sns.set_palette('deep')
 
     fig, ax1 = plt.subplots(figsize=figsize)
 
     # Plot counts
     if raw:
+        cnt = YTICK_COUNT
+        scl = 0.01
         scores.plot.line(y='sig_data', color='orange', ax=ax1, legend=False)
         mx = scores.sig_data.max()
         ax1.set_ylabel(
@@ -211,11 +215,10 @@ def plot_scores(scores, outfile=None, figsize=(14,10),
                 mx, scores.sig_data.min()
             ), fontsize=14
         )
-        lp = 10**(len(str(mx))-1)
-        ymx = math.ceil(mx/lp)*lp
-        yticks = range(0, ymx+1, int(round(ymx/15)))
-        ax1.set_yticks(yticks)
+        set_yspace(ax1, start=0, end=mx, count=cnt, fixed=lock_grid, scale=scl)
     else:
+        cnt = 10
+        scl = 0.01
         scores['perc'] = scores.sig_data/scores.sig_data.max()
         scores.plot.line(y='perc', color='orange', ax=ax1, legend=False)
         ax1.set_ylabel(
@@ -224,6 +227,9 @@ def plot_scores(scores, outfile=None, figsize=(14,10),
         )
         ax1.yaxis.set_major_formatter(
             FuncFormatter(lambda y, _: '{0:.0%}'.format(y))
+        )
+        set_yspace(
+            ax1, start=0, end=1, count=cnt, fixed=True, scale=scl
         )
 
     # Format and label x-axis
@@ -242,6 +248,31 @@ def plot_scores(scores, outfile=None, figsize=(14,10),
         'Enrichment Score\n(sig:non-sig enrichment)',
         fontsize=14
     )
+    set_yspace(
+        ax2, start=0, end=scores.enrichment_score.max(), count=cnt,
+        fixed=lock_grid, scale=scl
+    )
+
+    # Color enrichment below 1.0 as grey
+    ymin, ymax = ax2.get_ylim()
+    if ymax >= 1.1:
+        x = np.array(scores.index.to_series())
+        y = np.array(scores.enrichment_score)
+        x, y = get_x_y_at_one(x, y)
+        y_mask = np.ma.masked_greater(y, 1.001)  # Mask everything below 1.0
+        ax2.plot(x, y_mask, color='grey')
+
+    # Highlight the 1.0 line
+    if show_one:
+        xmin, xmax = ax2.get_xlim()
+        ax2.plot((xmin, xmax), (1.0, 1.0), c='purple', alpha=0.2, zorder=-10)
+        ax2.text(xmax, 0.98, '1.0', fontdict={'fontsize': 12, 'weight': 'bold'})
+        ax2.set_xlim(xmin, xmax)
+
+    # Only write the grid once
+    ax2.grid(None)
+
+    # Write the title
     ax2.set_title(title, fontsize=17)
 
     # Format and add legend
@@ -255,6 +286,75 @@ def plot_scores(scores, outfile=None, figsize=(14,10),
         fig.savefig(outfile)
 
     return fig, [ax1, ax2]
+
+
+def set_yspace(ax, start, end, count=YTICK_COUNT, fixed=False, scale=None):
+    """Set the matplotlib spacing for the y-axis."""
+    from matplotlib.ticker import LinearLocator
+    from matplotlib.ticker import MaxNLocator
+
+    # Float everything
+    start = float(start)
+    end = float(end)
+
+    # Round up the end
+    nlen = len(str(int(end)))
+    lp = float(10**(nlen-1))
+    end = math.ceil(end/lp)*lp
+
+    # Round down the start
+    start = math.floor(start/lp)*lp
+
+    # Set axes limits
+    ax.set_ylim(start, end)
+
+    # Set the tick counts
+    if fixed:
+        ax.yaxis.set_major_locator(
+            LinearLocator(count)
+        )
+    else:
+        ax.yaxis.set_major_locator(
+            MaxNLocator(nbins=count)
+        )
+
+    if scale:
+        scl = end*scale
+        ystart = start-scl
+        yend = end+scl
+        yticks = ax.get_yticks()
+        ax.set_ylim(ystart, yend)
+        ax.set_yticks(yticks)
+
+    # Return the linspace version of above, should be the same, but position
+    # is not guaranteed
+    return np.linspace(start, end, count)
+
+
+def get_x_y_at_one(x, y):
+    """Return x, y with x=1.0 added if it doesn't exist."""
+    from scipy import stats as sts
+    pre = None
+    fin = None
+    xl = list(x)
+    yl = list(y)
+    for c, i in enumerate(y):
+        if i == 1.0:
+            print(i, 'is 1')
+            return x, y
+        if i > 1.0:
+            if i == 0:
+                return x, y
+            tx = (xl[c-1], xl[c])
+            ty = (yl[c-1], yl[c])
+            break
+    reg = sts.linregress(tx, ty)
+    #  new_y = (reg.slope*1.0)+reg.intercept
+    new_x = (1.0-reg.intercept)/reg.slope
+    xl.insert(c, new_x)
+    yl.insert(c, 1.0)
+    return np.array(xl), np.array(yl)
+
 
 
 def get_set(x):
@@ -661,9 +761,10 @@ def plot_args(args):
         scores = scores[scores.cutoff <= args.min_p]
     if args.max_p:
         scores = scores[scores.cutoff >= args.max_p]
-    _sys.stderr.write('Plotting scores to {0}\n'.format(args.plot))
+    _sys.stderr.write('Plotting scores to {0}\n'.format(args.plot_output))
     plot_scores(
-        scores, outfile=args.plot_output, comp_prefix=args.prefix, raw=args.raw
+        scores, outfile=args.plot_output, comp_prefix=args.prefix,
+        raw=args.raw, show_one=args.show_one, lock_grid=args.fix_grid
     )
 
 
@@ -794,7 +895,7 @@ def main(argv=None):
     )
     plot_mode.add_argument('scores', help='Scores table from run mode')
     plot_mode.add_argument(
-        'plot-output', help='File to write plot to'
+        'plot_output', metavar="plot-output-file", help='File to write plot to'
     )
     plot_fmt = plot_mode.add_argument_group('format options')
     plot_fmt.add_argument(
@@ -804,6 +905,14 @@ def main(argv=None):
     plot_fmt.add_argument(
         '-p', '--prefix', default='comp_data',
         help='Optional comparison study prefix, only used for plot title'
+    )
+    plot_fmt.add_argument(
+        '--show-one', action='store_true',
+        help='Highlight enrichment >= 1.0 on the plot'
+    )
+    plot_fmt.add_argument(
+        '--fix-grid', action='store_true',
+        help='Force the y-grid to match on both axes'
     )
     plot_filt = plot_mode.add_argument_group('filter options')
     plot_filt.add_argument(
