@@ -243,7 +243,9 @@ def plot_scores(scores, outfile=None, figsize=(14,10), comp_prefix=None,
 
     # Plot enrichment score on opposite x-axis
     ax2 = ax1.twinx()
-    scores.plot.line(y='enrichment_score', color='blue', ax=ax2, legend=False)
+    scores.plot.line(
+        y='enrichment_score', color='orchid', ax=ax2, legend=False
+    )
     ax2.set_ylabel(
         'Enrichment Score\n(sig:non-sig enrichment)',
         fontsize=14
